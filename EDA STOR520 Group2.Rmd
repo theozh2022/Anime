@@ -1,0 +1,317 @@
+---
+title: "Exploratory Data Analysis"
+author: "STOR 520 Group 2"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidytext)
+library(lubridate)
+library(DT)
+
+# Import Data Below
+# read_csv()
+anime=read_csv('/Users/theozh/Downloads/datasets/Anime-2.csv')
+
+#https://opal.ils.unc.edu/~theozh/Anime-2.csv
+```
+
+# Creator: FIRSTNAME LASTNAME
+
+### Q1: WRITE_QUESTION_HERE
+
+```{r}
+#
+```
+
+### Q2: WRITE_QUESTION_HERE
+
+```{r}
+#
+```
+
+# Interpreter: Theo Zhang
+
+### Q1: Use a sentiment analysis model to analyze the ‘synopsis’ text for each ‘shoujo’ to identify whether the texts are associated with positive or negative sentiments. Group similar ‘shoujo’ anime based on genres and explore their relationship in terms of sentiment.
+
+In Japanese, "shoujo" literally means girls, but shoujo anime are typically geared towards young adult women. I honed in on the "Demographic" variable from the complete anime dataset that contains more than 20,000 entries. This filtered dataset serves as a repository for me to gain meaningful insights into the world of shoujo anime, as I intend to explore young women's preferences and interests in anime. 
+```{r, echo=FALSE}
+shoujo_data=anime %>% 
+  filter(Demographics == "Shoujo") %>% 
+  select(-2,-3,-9,-(11:15)) %>% 
+  rename(Minutes=Duration_Minutes) %>% 
+  select(-2)  
+
+shoujo_data$Start_Aired = as.Date(shoujo_data$Start_Aired, format = "%d-%b-%y")
+future_dates = !is.na(shoujo_data$Start_Aired) & shoujo_data$Start_Aired > Sys.Date()
+shoujo_data$Start_Aired[future_dates] = shoujo_data$Start_Aired[future_dates] - years(100)
+shoujo_data$Year <- format(shoujo_data$Start_Aired, "%Y")
+shoujo_data2=shoujo_data%>% 
+  select(-1, -6, -10) %>% 
+  select(-3, -5, -6) %>% 
+  select(-5) %>% 
+  select(-3, -5)
+  
+datatable(shoujo_data2, options = list(
+  pageLength = 5,
+  columnDefs = list(
+    list(
+      targets = 2,  
+      render = JS(
+        "function(data, type, row, meta) {",
+        "  if (type === 'display') {",
+        "    return data.length > 5 ?",
+        "      data.substr(0, data.indexOf(' ', 20)) + '...' :",
+        "      data;",
+        "  } else {",
+        "    return data;",
+        "  }",
+        "}"
+      )
+    )
+  )
+))
+```
+
+
+After applying the tidytext library to perform an innerjoin with the Bing lexicon, which categorizes words into two groups: positive +1 and negative -1. I aggregated the scores to produce an overall sentiment score per year for that text from the 'Synopsis'. My aim is to analyze the trend in sentiment over time.
+
+```{r, echo=F, warning=F, message=FALSE}
+
+bing_lexicon = get_sentiments("bing")
+shoujo_tokens = shoujo_data %>%
+  mutate(Synopsis = tolower(Synopsis)) %>%
+  unnest_tokens(word, Synopsis)
+
+shoujo_sentiment_by_year = shoujo_tokens %>%
+  inner_join(bing_lexicon) %>%
+  count(Year, sentiment) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(Sentiment = positive - negative)
+
+datatable(shoujo_sentiment_by_year)
+
+```
+
+It seems that from 1966 to 2022, the sentiment scores appear to remain relatively stable, which suggests that shoujo anime tends to maintain a relatively consistent positive emotional tone over time. 
+
+However, it's interesting to know that in 1997, 2000, 2008, and 2021, there are extreme spikes in negative sentiment scores, all around -20, while in most of the years, the sentiment appeared to be positive. This suggests that something specific may have influenced the emotional tone of shoujo anime in those particular years.
+
+My probe is that anime similar as "Pretty Guardians Sailor Moon Eternal The Movie Part 2" was frequently released in 2021. The portrayal of a post-solar eclipse Earth being shrouded in a dark force suggests a potentially dire and challenging situation for the characters, hence a strong negative sentiment. 
+
+```{r, echo=F, warning=F, message=FALSE}
+shoujo_sentiment_by_year$Year[is.na(shoujo_sentiment_by_year$Year)] = median(shoujo_sentiment_by_year$Year, na.rm = TRUE)
+ggplot(shoujo_sentiment_by_year, aes(Year, Sentiment, group = 1)) +
+  geom_point() +
+  geom_smooth()+
+  labs(title = "Sentiment Trends Over Years",
+       x = "Year",
+       y = "Sentiment Count") +
+  theme_minimal()+
+  scale_x_discrete(breaks = seq(min(shoujo_sentiment_by_year$Year), max(shoujo_sentiment_by_year$Year), by = 5))
+```
+
+The highest frequency of the term "love" in the following sentiment term frequency chart suggests a strong emphasis on romantic themes within the shoujo anime. This corresponds with my preconceived notion that young women often have a preference for romance in their anime. It indicates that romance remains a potent and popular theme for shoujo anime audiences.
+
+```{r, echo=F, warning=F, message=F}
+shoujo_sentiments = shoujo_tokens %>%
+  inner_join(bing_lexicon) 
+
+positive_terms = shoujo_sentiments %>%
+  filter(sentiment == "positive") %>%
+  count(word, sort = TRUE) %>%
+  top_n(10)
+
+negative_terms = shoujo_sentiments %>%
+  filter(sentiment == "negative") %>%
+  count(word, sort = TRUE) %>%
+  filter(word != "unknown") %>% 
+  top_n(10)
+
+combined_terms = bind_rows(
+  mutate(positive_terms, sentiment = "positive"),
+  mutate(negative_terms, sentiment = "negative")
+)
+
+ggplot(combined_terms, aes(x = reorder(word, n), y = n, fill=sentiment)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Top 10 Sentiment-Rich Terms",
+       x = "Term",
+       y = "Frequency") +
+  facet_wrap(~ sentiment, scales = "free_y") +
+  coord_flip()+
+  theme_light()
+```
+
+I then calculated the sentiment score based on their ratings. It's no surprise for the negative sentiment score of "R - 17+ (Violence & Profanity)", which suggests that anime with this rating tend to evoke more negative emotions among viewers. 
+
+I know the rating assigned to an anime can significantly impact the emotional experience of viewers. It is still shocking to know that ainme classied as "R+ - Mild Nudity" garnered a neutral sentiment. 
+
+```{r, echo=F}
+shoujo_sentiments_aggregated = shoujo_sentiments %>%
+  group_by(ID) %>%
+  summarise(
+    English = first(English),
+    Type = first(Type),
+    Episodes = first(Episodes),
+    Start_Aired = first(Start_Aired),
+    Year = first(Year),
+    Genres = first(Genres),
+    Themes = first(Themes),
+    Minutes = first(Minutes),
+    Rating = first(Rating),
+    Score = first(Score),
+    Scored_Users = first(Scored_Users),
+    Ranked = first(Ranked),
+    Popularity = first(Popularity),
+    Members = first(Members),
+    Favorites = first(Favorites),
+    sentiment = sum(ifelse(sentiment == "positive", 1, -1))
+  ) 
+
+rating_groups = split(shoujo_sentiments_aggregated, shoujo_sentiments_aggregated$Rating)
+
+sentiment_stats = lapply(rating_groups, function(group) {
+  mean_sentiment = mean(group$sentiment)
+  median_sentiment = median(group$sentiment)
+  return(data.frame(Mean_Sentiment = mean_sentiment, Median_Sentiment = median_sentiment))
+})
+
+sentiment_stats_df = do.call(rbind, sentiment_stats)
+rownames(sentiment_stats_df) = names(sentiment_stats)
+
+ggplot(sentiment_stats_df, aes(x = rownames(sentiment_stats_df), y = Mean_Sentiment)) +
+  geom_bar(stat = "identity", fill = "steelblue", width = 0.5) +
+  labs(x='', y = "Mean Sentiment", title = 'Sentiment by Ratings') +
+  coord_flip()
+```
+
+The prominence of the romance genre further consolidated my preconception that romantic relationships and themes hold a central position in shoujo anime. The popularity of fantasy genre indicates a desire for escapism and immersion in imaginative worlds. 
+
+However, when I have the scope expanded to the top 15 genre, I find something interesting. Although "Boys Love" and Girls Love" anime are both typically created with a female audience in mind, focusing on the romantic relationships between same-sex characters, BL have a negative sentiment, whereas GL tends to be positive overall. 
+
+Upon research, this might be the answer:
+
+BL anime often explores themes of unrequited love or complex relationships. This can introduce more elements of heartbreak and emotional turmoil. BL anime also often includes elements of sexual tension and can delve into more explicit themes. These complexity could potentially result in a lower sentiment score. This finding is also corroborated by the fact most of the R - 17+ (violence & profanity) shoujo anime also belong to the BL genre. In contrast, GL anime place a stronger emphasis on emotional and spiritual connections between characters, which often evoke a sense of warmth, understanding and fulfillment.  
+
+
+```{r, echo=F}
+genres_list = unlist(strsplit(shoujo_sentiments_aggregated$Genres, ", "))
+genre_frequencies = table(genres_list)
+top_10_genres = head(sort(genre_frequencies, decreasing=T), 10)
+top_15_genres = head(sort(genre_frequencies, decreasing=T), 15)
+
+genre_sentiment = sapply(names(top_15_genres), function(genre) {
+  mean(shoujo_sentiments_aggregated$sentiment[grepl(genre, shoujo_sentiments_aggregated$Genres)])
+})
+
+genre_sentiment_df = data.frame(Genre = names(top_15_genres), Mean_Sentiment = genre_sentiment)
+genre_data = data.frame(genre = names(top_10_genres), frequency = as.numeric(top_10_genres))
+
+ggplot(genre_data, aes(x = "", y = frequency, fill = genre)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y") +
+  labs(title = "Top 10 Genres in Shoujo Anime") +
+  geom_text(aes(label = paste0(genre, '\n', scales::percent(frequency / sum(frequency))), 
+                x = 1.3), 
+            position = position_stack(vjust = 0.5),
+            size = 2) +
+  theme_void() +
+  theme(legend.position = "right") +
+  scale_fill_brewer(palette = "Set3")
+
+ggplot(genre_sentiment_df, aes(x = reorder(Genre, -desc(Mean_Sentiment)), y = Mean_Sentiment, fill = factor(ifelse(Mean_Sentiment >= 0, "Positive", "Negative")))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("turquoise", "orange"), labels = c("Negative", "Positive")) +
+  labs(title = "Mean Sentiment by Genre in Shoujo Anime", x='',
+       y = "Mean Sentiment", fill = "Sentiment")+
+  coord_flip()
+```
+
+
+
+
+### Q2: WRITE_QUESTION_HERE
+
+```{r}
+
+
+
+```
+
+# Orator: FIRSTNAME LASTNAME
+
+### Q1: WRITE_QUESTION_HERE
+
+```{r}
+#
+```
+
+### Q2: WRITE_QUESTION_HERE
+
+```{r}
+#
+```
+
+# Deliverer: FIRSTNAME LASTNAME
+
+### Q1: WRITE_QUESTION_HERE
+
+```{r}
+#
+```
+
+### Q2: WRITE_QUESTION_HERE
+
+```{r}
+#
+```
+
+# Follow-up Questions
+
+### New Questions Based Off Initial Investigation
+
+- Q1: WRITE_QUESTION_HERE
+- Q2: WRITE_QUESTION_HERE
+- Q3: WRITE_QUESTION_HERE 
+- Q4: WRITE_QUESTION_HERE
+
+### Investigation of Follow-up Questions
+
+GIVE WHAT 2 QUESTIONS YOU ATTEMPTED TO INVESTIGATE FURTHER IN COMPLETE SENTENCES (*Example:* Our group decided to investigate Q2 and Q4 in further detail.)
+
+SHOW AT LEAST 2 TABLES OR FIGURES BELOW THAT EXPLORE ANSWERS FOR THE QUESTIONS YOU ARE INVESTIGATING FURTHER.
+
+```{r}
+#
+```
+
+```{r}
+#
+```
+
+# Summary
+
+GIVE A 2 PARAGRAPH SUMMARY. 
+
+PARAGRAPH 1 SHOULD DESCRIBE WHAT YOU LEARNED ABOUT YOUR DATA FROM INVESTIGATING THE INITIAL QUESTIONS. DID YOU FIND ANYTHING UNUSUAL IN YOUR DATA? DID ANYTHING SURPRISE YOU? WHICH OF THE INITIAL QUESTIONS WERE HELPFUL IN LEADING YOU TO MORE QUESTIONS?
+
+PARAGRAPH 2 SHOULD SUMMARIZE WHAT YOU LEARNED FROM INVESTIGATING THE FOLLOW-UP QUESTIONS. WHY ARE THESE FOLLOW-UP QUESTIONS INTERESTING FOR INVESTIGATION? DESCRIBE THE TABLES/FIGURES YOU USED TO EXPLORE ANSWERS TO THESE FOLLOW-UP QUESTIONS? WHAT DID YOU LEARN FROM THE TABLES/FIGURES REGARDING THE FOLLOW-UP QUESTIONS YOU PROPOSED?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
