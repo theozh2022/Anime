@@ -1,0 +1,12 @@
+name: anime
+title: anime
+username: theozh
+account: theozh
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 10704140
+bundleId: 8001651
+url: https://theozh.shinyapps.io/anime/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
